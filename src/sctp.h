@@ -126,6 +126,13 @@ typedef enum SctpDataPpid {
 
 } SctpDataPpid;
 
+typedef enum {
+    DATA_CHANNEL_RELIABLE = 0x00,
+    DATA_CHANNEL_RELIABLE_UNORDERED = 0x80,
+    DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT = 0x01,
+    DATA_CHANNEL_PARTIAL_RELIABLE_TIMED = 0x02,
+} DataChannelReliability;
+
 #define SCTP_MAX_STREAMS 5
 
 typedef struct {
@@ -172,5 +179,7 @@ void sctp_onmessage(Sctp* sctp, void (*onmessage)(char* msg, size_t len, void* u
 void sctp_onopen(Sctp* sctp, void (*onopen)(void* userdata));
 
 void sctp_onclose(Sctp* sctp, void (*onclose)(void* userdata));
+
+int sctp_create_datachannel(Sctp* sctp, const char* label, DataChannelReliability reliability, uint16_t* sid);
 
 #endif  // SCTP_H_

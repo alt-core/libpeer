@@ -133,7 +133,7 @@ int sctp_outgoing_data(Sctp* sctp, char* buf, size_t len, SctpDataPpid ppid, uin
 
   chunk->type = SCTP_DATA;
   chunk->iube = 0x06;
-  chunk->sid = htons(0);
+  chunk->sid = htons(sid);
   chunk->sqn = htons(sqn++);
   chunk->ppid = htonl(ppid);
 
@@ -174,6 +174,7 @@ void sctp_add_stream_mapping(Sctp* sctp, const char* label, uint16_t sid) {
     strncpy(sctp->stream_table[sctp->stream_count].label, label, sizeof(sctp->stream_table[sctp->stream_count].label));
     sctp->stream_table[sctp->stream_count].sid = sid;
     sctp->stream_count++;
+    LOGI("Stream mapping added: %s -> %d", label, sid);
   } else
     LOGE("Stream table full. Cannot add more streams.");
 }
@@ -223,8 +224,8 @@ void sctp_incoming_data(Sctp* sctp, char* buf, size_t len) {
   if (!sctp)
     return;
 
-#ifdef HAVE_USRSCTP
   sctp_handle_sctp_packet(sctp, buf, len);
+#ifdef HAVE_USRSCTP
   usrsctp_conninput(sctp, buf, len, 0);
 #else
   size_t length = 0;
@@ -603,4 +604,77 @@ void sctp_onopen(Sctp* sctp, void (*onopen)(void* userdata)) {
 
 void sctp_onclose(Sctp* sctp, void (*onclose)(void* userdata)) {
   sctp->onclose = onclose;
+}
+
+int sctp_create_datachannel(Sctp* sctp, const char* label, DataChannelReliability reliability, uint16_t* sid) {
+    if (!sctp || !label || !sid) {
+        LOGE("Invalid arguments");
+        return -1;
+    }
+    if (!sctp->connected) {
+        LOGE("SCTP not connected");
+        return -1;
+    }
+
+    uint16_t label_len = strlen(label);
+    if (label_len == 0 || label_len > 32) {
+        LOGE("Invalid label length: %d", label_len);
+        return -1;
+    }
+
+    size_t msg_size = 12 + label_len; // header(12 bytes) + label length
+    if (msg_size > CONFIG_MTU) {
+        LOGE("Message size too large: %zu", msg_size);
+        return -1;
+    }
+
+    // Find available stream ID
+    uint16_t available_sid;
+    for (available_sid = 0; available_sid < SCTP_MAX_STREAMS; available_sid++) {
+        int found = 0;
+        for (int i = 0; i < sctp->stream_count; i++) {
+            if (sctp->stream_table[i].sid == available_sid) {
+                found = 1;
+                break;
+            }
+        }
+        if (!found) break;
+    }
+
+    if (available_sid >= SCTP_MAX_STREAMS) {
+        LOGE("No available stream ID");
+        return -1;
+    }
+
+    // Check for duplicate labels
+    for (int i = 0; i < sctp->stream_count; i++) {
+        if (strncmp(sctp->stream_table[i].label, label, sizeof(sctp->stream_table[i].label)) == 0) {
+            LOGE("Label already exists: %s", label);
+            return -1;
+        }
+    }
+
+    // Create DATA_CHANNEL_OPEN message
+    uint8_t msg[CONFIG_MTU];
+    msg[0] = DATA_CHANNEL_OPEN;          // message type
+    msg[1] = reliability;                // channel type
+    msg[2] = 0;                          // priority (unused)
+    msg[3] = 0;                          // priority (unused)
+    *(uint16_t*)(msg + 4) = 0;          // reliability param
+    *(uint16_t*)(msg + 6) = htons(available_sid); // stream id
+    *(uint16_t*)(msg + 8) = htons(label_len); // label length
+    *(uint16_t*)(msg + 10) = 0;         // protocol length
+    
+    memcpy(msg + 12, label, label_len);
+
+    sctp_add_stream_mapping(sctp, label, available_sid);
+
+    *sid = available_sid;
+
+    // Send DATA_CHANNEL_OPEN message
+    if (sctp_outgoing_data(sctp, (char*)msg, msg_size, PPID_CONTROL, available_sid) < 0) {
+        return -1;
+    }
+
+    return 0;
 }

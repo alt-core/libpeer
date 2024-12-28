@@ -151,6 +151,15 @@ char* peer_connection_lookup_sid_label(PeerConnection* pc, uint16_t sid);
  */
 int peer_connection_add_ice_candidate(PeerConnection* pc, char* ice_candidate);
 
+/**
+ * @brief Create a new data channel
+ * @param pc The peer connection
+ * @param label The label for the data channel
+ * @param sid Pointer to store the assigned stream ID
+ * @return 0 on success, -1 on error
+ */
+int peer_connection_create_datachannel(PeerConnection* pc, const char* label, uint16_t* sid);
+
 #ifdef __cplusplus
 }
 #endif

@@ -582,3 +582,10 @@ int peer_connection_add_ice_candidate(PeerConnection* pc, char* candidate) {
   agent->remote_candidates_count++;
   return 0;
 }
+
+int peer_connection_create_datachannel(PeerConnection* pc, const char* label, uint16_t* sid) {
+    if (!pc || !pc->config.datachannel || !sid)
+        return -1;
+        
+    return sctp_create_datachannel(&pc->sctp, label, DATA_CHANNEL_RELIABLE, sid);
+}
